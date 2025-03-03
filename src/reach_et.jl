@@ -11,7 +11,7 @@ using MAT
 using Plots
 using GLMakie
 
-export plot_vt_surfaces
+export plot_vt_surfaces, plot_vt_surfaces2
 
 function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6,plotstyle="GLMakie")
 """
@@ -54,8 +54,8 @@ function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6
   peakspeed = data["peakspeed"]
   timeValuation = data["timeValuation"]
   
-  (ct, distance, duration)  = fillmissingsurf_gridded(timeValuation, distance, duration)
-  (_, _, peakspeed)         = fillmissingsurf_gridded(timeValuation, distance, peakspeed)
+  (ct, distance, duration)  = simple_grid_fillmissing(timeValuation, distance, duration)
+  (_, _, peakspeed)         = simple_grid_fillmissing(timeValuation, distance, peakspeed)
   
   # Add zero columns
   distance  = hcat(zeros(size(distance, 1)), distance)
@@ -71,10 +71,10 @@ function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6
   if plotstyle == "Plots"
       
     # Create a new figure
-    fig = plot(layout=(2, 3), size=(575, 350), background_color=:white)
+    fig = Plots.plot(layout=(2, 3), size=(575, 350), background_color=:white)
     
     # First subplot (equivalent to subplot(231) in MATLAB)
-    subplot = plot!(fig[1], ct_mech, distance, duration, 
+    subplot = Plots.plot!(fig[1], ct_mech, distance, duration, 
         st=:surface, 
         color=cs, 
         alpha=0.5, 
@@ -89,7 +89,7 @@ function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6
     )
     
     # Second subplot (equivalent to subplot(234) in MATLAB)
-    subplot = plot!(fig[4], ct_mech, distance, peakspeed, 
+    subplot = Plots.plot!(fig[4], ct_mech, distance, peakspeed, 
         st=:surface, 
         color=cs, 
         alpha=0.5, 
@@ -172,13 +172,13 @@ function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6
     
     # Connect sliders to camera rotation
     on(azimuth_slider.value) do val
-        rotate_cam!(ax1, deg2rad(elevation_slider.value[]), deg2rad(val), 0)
-        rotate_cam!(ax2, deg2rad(elevation_slider.value[]), deg2rad(val), 0)
+        rotate_cam!(ax1.scene, cam1, deg2rad(elevation_slider.value[]), deg2rad(val), 0)
+        rotate_cam!(ax1.scene, cam2, deg2rad(elevation_slider.value[]), deg2rad(val), 0)
     end
     
     on(elevation_slider.value) do val
-        rotate_cam!(ax1, deg2rad(val), deg2rad(azimuth_slider.value[]), 0)
-        rotate_cam!(ax2, deg2rad(val), deg2rad(azimuth_slider.value[]), 0)
+        rotate_cam!(ax1.scene, cam1, deg2rad(val), deg2rad(azimuth_slider.value[]), 0)
+        rotate_cam!(ax1.scene, cam2, deg2rad(val), deg2rad(azimuth_slider.value[]), 0)
     end
     
     return fig
@@ -187,109 +187,182 @@ function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6
   end
 end
 
-function fillmissingsurf_gridded(xs, ys, vals)
-
+function simple_grid_fillmissing(xs, ys, vals)
   """
-Interpolate missing values in a 2D surface using gridded interpolation.
-"""
-# Check dimensions
-if size(xs) != size(ys) || size(xs) != size(vals)
-    error("Input arrays must have the same dimensions")
+  A straightforward fill of missing values in a 2D grid surface.
+  This function assumes data is organized in a grid structure and handles
+  missing coordinates and values (either can be 0s or nans).
+  
+  Parameters:
+  -----------
+  xs : Array
+      x-coordinates of the data points
+  ys : Array
+      y-coordinates of the data points
+  vals : Array
+      Values at each (x,y) point
+      
+  Returns:
+  --------
+  grid_xs : Array
+      Filled x-coordinates in grid structure
+  grid_ys : Array
+      Filled y-coordinates in grid structure
+  grid_vals : Array
+      Filled values in grid structure
+  """
+  # Create copies to avoid modifying originals
+  grid_xs = copy(xs)
+  grid_ys = copy(ys)
+  grid_vals = copy(vals)
+  
+  # Step 1: Find all unique valid x and y values to define our grid
+  flat_xs = grid_xs[:]
+  flat_ys = grid_ys[:]
+  
+  valid_xs = unique(filter(x -> x != 0.0 && !isnan(x), flat_xs))
+  valid_ys = unique(filter(y -> y != 0.0 && !isnan(y), flat_ys))
+  
+  sort!(valid_xs)
+  sort!(valid_ys)
+  
+  # Step 2: If we have a complete, uniform grid, then each row should have the same x values
+  # and each column should have the same y values
+  
+  # Get dimensions of our grid
+  nx = length(valid_xs)
+  ny = length(valid_ys)
+  
+  # Create a new, perfectly regular grid
+  perfect_grid_xs = zeros(nx, ny)
+  perfect_grid_ys = zeros(nx, ny)
+  perfect_grid_vals = zeros(nx, ny)
+  
+  # Fill the perfect grid with coordinate values
+  for i in 1:nx
+      for j in 1:ny
+          perfect_grid_xs[i, j] = valid_xs[i]
+          perfect_grid_ys[i, j] = valid_ys[j]
+          perfect_grid_vals[i, j] = NaN  # Initially all values are NaN
+      end
+  end
+  
+  # Step 3: Transfer known values from original grid to perfect grid
+  for i in 1:size(grid_xs, 1)
+      for j in 1:size(grid_xs, 2)
+          # Skip if either coordinate is missing
+          if (grid_xs[i, j] == 0.0 || isnan(grid_xs[i, j]) || 
+              grid_ys[i, j] == 0.0 || isnan(grid_ys[i, j]) ||
+              isnan(grid_vals[i, j]))
+              continue
+          end
+          
+          # Find the position in our perfect grid
+          x_index = findfirst(x -> isapprox(x, grid_xs[i, j], atol=1e-10), valid_xs)
+          y_index = findfirst(y -> isapprox(y, grid_ys[i, j], atol=1e-10), valid_ys)
+          
+          if !isnothing(x_index) && !isnothing(y_index)
+              perfect_grid_vals[x_index, y_index] = grid_vals[i, j]
+          end
+      end
+  end
+  
+  # Step 4: Interpolate missing values in the perfect grid
+  # We'll use linear interpolation along rows and columns
+  
+  # First interpolate along rows (x direction)
+  for j in 1:ny
+      row_values = perfect_grid_vals[:, j]
+      valid_indices = findall(!isnan, row_values)
+      
+      if length(valid_indices) >= 2  # Need at least 2 points for interpolation
+          # For each NaN value, linearly interpolate
+          for i in 1:nx
+              if isnan(row_values[i])
+                  # Find nearest valid points to the left and right
+                  left_indices = valid_indices[valid_indices .< i]
+                  right_indices = valid_indices[valid_indices .> i]
+                  
+                  if !isempty(left_indices) && !isempty(right_indices)
+                      left_idx = maximum(left_indices)
+                      right_idx = minimum(right_indices)
+                      
+                      left_x = valid_xs[left_idx]
+                      right_x = valid_xs[right_idx]
+                      left_val = perfect_grid_vals[left_idx, j]
+                      right_val = perfect_grid_vals[right_idx, j]
+                      
+                      # Linear interpolation
+                      x = valid_xs[i]
+                      t = (x - left_x) / (right_x - left_x)
+                      perfect_grid_vals[i, j] = left_val * (1 - t) + right_val * t
+                  end
+              end
+          end
+      end
+  end
+  
+  # Then interpolate along columns (y direction)
+  for i in 1:nx
+      col_values = perfect_grid_vals[i, :]
+      valid_indices = findall(!isnan, col_values)
+      
+      if length(valid_indices) >= 2  # Need at least 2 points for interpolation
+          # For each NaN value, linearly interpolate
+          for j in 1:ny
+              if isnan(col_values[j])
+                  # Find nearest valid points above and below
+                  below_indices = valid_indices[valid_indices .< j]
+                  above_indices = valid_indices[valid_indices .> j]
+                  
+                  if !isempty(below_indices) && !isempty(above_indices)
+                      below_idx = maximum(below_indices)
+                      above_idx = minimum(above_indices)
+                      
+                      below_y = valid_ys[below_idx]
+                      above_y = valid_ys[above_idx]
+                      below_val = perfect_grid_vals[i, below_idx]
+                      above_val = perfect_grid_vals[i, above_idx]
+                      
+                      # Linear interpolation
+                      y = valid_ys[j]
+                      t = (y - below_y) / (above_y - below_y)
+                      perfect_grid_vals[i, j] = below_val * (1 - t) + above_val * t
+                  end
+              end
+          end
+      end
+  end
+  
+  # Step 5: For any remaining NaN values, use nearest neighbor
+  # This handles extrapolation for edge cases
+  for i in 1:nx
+      for j in 1:ny
+          if isnan(perfect_grid_vals[i, j])
+              # Find all valid values and their distances to this point
+              valid_mask = .!isnan.(perfect_grid_vals)
+              
+              if any(valid_mask)  # If there are any valid values
+                  valid_indices = findall(valid_mask)
+                  
+                  # Calculate distances to all valid points
+                  distances = [
+                      sqrt((i - idx[1])^2 + (j - idx[2])^2) 
+                      for idx in valid_indices
+                  ]
+                  
+                  # Find nearest valid point
+                  nearest_idx = valid_indices[argmin(distances)]
+                  perfect_grid_vals[i, j] = perfect_grid_vals[nearest_idx]
+              else
+                  # If no valid values exist (shouldn't happen), set to 0
+                  @warn "No valid values exist for interpolation, setting to 0"
+                  perfect_grid_vals[i, j] = 0.0
+              end
+          end
+      end
+  end
+  
+  return perfect_grid_xs, perfect_grid_ys, perfect_grid_vals
 end
-
-# Create copies to avoid modifying originals
-filled_xs = copy(xs)
-filled_ys = copy(ys)
-filled_vals = copy(vals)
-
-# Replace zeros with NaN
-filled_xs[filled_xs .== 0.0] .= NaN
-filled_ys[filled_ys .== 0.0] .= NaN
-
-# Find indices with valid data (no NaNs)
-valid_mask = .!isnan.(filled_xs) .&& .!isnan.(filled_ys) .&& .!isnan.(filled_vals)
-valid_indices = findall(valid_mask)
-
-if length(valid_indices) == 0
-    error("No valid data points for interpolation")
-end
-
-# Extract coordinates and values for valid points
-valid_points = [(filled_xs[i], filled_ys[i]) for i in valid_indices]
-valid_xs = [p[1] for p in valid_points]
-valid_ys = [p[2] for p in valid_points]
-valid_values = [filled_vals[i] for i in valid_indices]
-
-# Find indices that need interpolation
-nan_indices = findall(.!valid_mask)
-unique_xs = sort(unique(valid_xs))
-unique_ys = sort(unique(valid_ys))
-    
-# If no interpolation needed, return original
-if length(nan_indices) == 0
-    return filled_xs, filled_ys, filled_vals
-end
-
-# Rebuild the values array to match the grid structure
-gridded_values = Array{Float64}(undef, length(unique_xs), length(unique_ys))
-fill!(gridded_values, NaN)
-
-# Fill in the known values
-for i in 1:length(valid_xs)
-    x_idx = findfirst(==(valid_xs[i]), unique_xs)
-    y_idx = findfirst(==(valid_ys[i]), unique_ys)
-    gridded_values[x_idx, y_idx] = valid_values[i]
-end
-
-# Create the interpolation object
-itp = interpolate((unique_xs, unique_ys), gridded_values, Gridded(Linear()))
-    
-# Interpolate missing values
-for idx in nan_indices
-    # For points with missing x or y, we need to estimate them first
-    # This is a simplified approach - actual implementation depends on data structure
-    i, j = idx.I  # Get row and column indices
-    
-    # Estimate x coordinate if needed
-    if isnan(filled_xs[idx])
-        # Use column average or nearby values
-        col_values = filled_xs[:, j]
-        valid_col = col_values[.!isnan.(col_values)]
-        if length(valid_col) > 0
-            filled_xs[idx] = mean(valid_col)
-        else
-            # Fallback to global mean if no valid points in column
-            filled_xs[idx] = mean(valid_xs)
-        end
-    end
-    
-    # Estimate y coordinate if needed
-    if isnan(filled_ys[idx])
-        # Use row average or nearby values
-        row_values = filled_ys[i, :]
-        valid_row = row_values[.!isnan.(row_values)]
-        if length(valid_row) > 0
-            filled_ys[idx] = mean(valid_row)
-        else
-            # Fallback to global mean if no valid points in row
-            filled_ys[idx] = mean(valid_ys)
-        end
-    end
-    
-    # Now interpolate the value
-    try
-        filled_vals[idx] = itp(filled_xs[idx], filled_ys[idx])
-    catch
-        # For points outside the convex hull of the data
-        # find nearest valid point
-        distances = [sqrt((filled_xs[idx] - x)^2 + (filled_ys[idx] - y)^2) 
-                    for (x, y) in zip(valid_xs, valid_ys)]
-        nearest_idx = argmin(distances)
-        filled_vals[idx] = valid_values[nearest_idx]
-    end
-end
-
-return filled_xs, filled_ys, filled_vals
-end # /function fillmissingsurf_gridded
-
 end
