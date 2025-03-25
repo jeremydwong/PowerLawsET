@@ -8,14 +8,59 @@ using Interpolations
 using Statistics
 using ColorSchemes
 using MAT
-using Plots
 using GLMakie
 
-export plot_vt_surfaces, plot_vt_surfaces2
+#define main_sequence struct to hold
+# duration
+# distance
+# peak speed
+# time valuation
+struct main_sequence
+    distance::Array{Float64,2}
+    duration::Array{Float64,2}
+    peak_speed::Array{Float64,2}
+    #time_valuation can either be an array, or a float64
+    time_valuation::Union{Array{Float64,2}, AbstractFloat}
+  function main_sequence(;distance, duration, peak_speed, time_valuation)
+    new(distance, duration, peak_speed, time_valuation)
+  end
+end
 
-function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6,plotstyle="GLMakie")
+mutable struct fit_
+    fn_vk::Function
+    fn_tk::Function
+    k_v::Float64
+    k_t::Float64
+    allfit::Dict{String, Any}
+end
+
+export main_sequence, replicate_pub_whk_sim, plot_vt_surfaces, fit_powerlaws_to_oc
+
 """
-function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6,plotstyle="GLMakie")
+function replicate_whk()
+  loads default data, plots surface, and returns main sequence object
+
+"""
+function replicate_pub_whk_sim(;fname = "reachgrid_ctmech.mat")
+  # make simfile location relative to this file. 
+  base = dirname(dirname(@__FILE__))
+  # concatenate
+  simfile = joinpath(base, "data","reaching",fname)
+  data      = matread(simfile)
+  distance  = data["distance"]
+  duration  = data["duration"]
+  peak_speed = data["peak_speed"]
+  timeValuation = data["time_valuation"]
+  mainseq = main_sequence(distance=distance, duration=duration, peak_speed=peak_speed,time_valuation=timeValuation)
+
+  f=plot_vt_surfaces(mainseq)
+  ret_fit = fit_powerlaws_to_oc(mainseq)
+  return (f, mainseq, ret_fit)
+end
+
+function plot_vt_surfaces(ms::main_sequence, az=27, el=33.6,plotstyle="interactive")
+"""
+function plot_vt_surfaces(ms::main_sequence; simfile="data/reachgrid.mat", az=27, el=33.6,plotstyle="GLMakie")
   
     Plot the surfaces of distance, duration, and peak speed as functions of time valuation and distance.
 
@@ -25,8 +70,6 @@ function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6
         Path to the MAT file containing the simulation results.
     f : int
         Figure number for the plot.
-    cf : float
-        Conversion factor for time valuation.
     az : float
         Azimuth angle for the 3D plot.
     el : float
@@ -45,17 +88,11 @@ function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6
   vclps = [az, el]
 
   # Colors in RGB format (0-1)
-  cs = range(RGB(239/255, 237/255, 245/255), RGB(117/255, 107/255, 177/255), length=100)
+  # cs = range(RGB(239/255, 237/255, 245/255), RGB(117/255, 107/255, 177/255), length=100)
   
-  # Load MAT file
-  data = matread(simfile)
-  distance = data["distance"]
-  duration = data["duration"]
-  peakspeed = data["peakspeed"]
-  timeValuation = data["timeValuation"]
-  
-  (ct, distance, duration)  = simple_grid_fillmissing(timeValuation, distance, duration)
-  (_, _, peakspeed)         = simple_grid_fillmissing(timeValuation, distance, peakspeed)
+  # Fill missing values in the grid
+  (ct, distance, duration)  = simple_grid_fillmissing(ms.time_valuation, ms.distance, ms.duration)
+  (_, _, peakspeed)         = simple_grid_fillmissing(ms.time_valuation, ms.distance, ms.peak_speed)
   
   # Add zero columns
   distance  = hcat(zeros(size(distance, 1)), distance)
@@ -63,70 +100,28 @@ function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6
   peakspeed = hcat(zeros(size(distance, 1)), peakspeed)
   ct = hcat(ct[:, 1], ct)
   
-  # Convert ct to ct_mech
-  eff_mech = 0.25
-  ct_mech = ct * eff_mech
+  ct_mech = ct
 
   # Plotting
-  if plotstyle == "Plots"
-      
-    # Create a new figure
-    fig = Plots.plot(layout=(2, 3), size=(575, 350), background_color=:white)
-    
-    # First subplot (equivalent to subplot(231) in MATLAB)
-    subplot = Plots.plot!(fig[1], ct_mech, distance, duration, 
-        st=:surface, 
-        color=cs, 
-        alpha=0.5, 
-        showaxis=true, 
-        xlabel="Time valuation Cₜ (W)", 
-        ylabel="Distance L (m)", 
-        zlabel="Duration T (s)",
-        xlim=(0, 50/cf),
-        ylim=(0, 0.55),
-        zlim=(0, 2.5),
-        camera=(vclps[1], vclps[2])
-    )
-    
-    # Second subplot (equivalent to subplot(234) in MATLAB)
-    subplot = Plots.plot!(fig[4], ct_mech, distance, peakspeed, 
-        st=:surface, 
-        color=cs, 
-        alpha=0.5, 
-        showaxis=true, 
-        xlabel="Cₜ (W)", 
-        ylabel="Distance L (m)", 
-        zlabel="Peak speed V (m/s)",
-        xlim=(0, 50/cf),
-        ylim=(0, 0.55),
-        zlim=(0, 1),
-        camera=(vclps[1], vclps[2])
-    )
-    
-    display(fig)
-    return fig
-  elseif plotstyle == "GLMakie"
-    
-    
-    # Create a new figure
-    fig = Figure(resolution=(1000, 700), fontsize=16)
+      # Create a new figure
+    fig = Figure(;size=(1000, 700), fontsize=16)
     
     # Add a 3D axis for the duration surface
     ax1 = Axis3(fig[1, 1], 
                xlabel="Time valuation Cₜ (W)",
                ylabel="Distance L (m)",
                zlabel="Duration T (s)",
-               title="Duration Surface")
+               title="Duration")
     
     # Create the surface
     surf1 = GLMakie.surface!(ax1, ct_mech, distance, duration,
                colormap=:plasma,
                transparency=true,
                alpha=0.85,
-               shading=true)
+               colorrange=(0, 2.5))
     
     # Set limits
-    GLMakie.xlims!(ax1, 0, 50/cf)
+    GLMakie.xlims!(ax1, 0, 15)
     GLMakie.ylims!(ax1, 0, 0.55)
     GLMakie.zlims!(ax1, 0, 2.5)
     
@@ -138,19 +133,19 @@ function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6
                xlabel="Time valuation Cₜ (W)",
                ylabel="Distance L (m)",
                zlabel="Peak Speed V (m/s)",
-               title="Peak Speed Surface")
+               title="Peak Speed")
     
     # Create the surface
     surf2 = GLMakie.surface!(ax2, ct_mech, distance, peakspeed,
                colormap=:plasma,
                transparency=true,
                alpha=0.85,
-               shading=true)
+               colorrange=(0, 1.1))
     
     # Set limits
-    GLMakie.xlims!(ax2, 0, 50/cf)
+    GLMakie.xlims!(ax2, 0, 15)
     GLMakie.ylims!(ax2, 0, 0.55)
-    GLMakie.zlims!(ax2, 0, 1.0)
+    GLMakie.zlims!(ax2, 0, 1.1)
     
     # Add colorbar
     Colorbar(fig[2, 2], surf2, label="Peak Speed (m/s)")
@@ -161,6 +156,9 @@ function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6
 
     rotate_cam!(ax1.scene, cam1, (deg2rad(el), deg2rad(az), 0))
     rotate_cam!(ax2.scene, cam2, (deg2rad(el), deg2rad(az), 0))
+    
+    if plotstyle == "interactive"
+        
     
     # Add camera control sliders
     azimuth_slider = Slider(fig[3, 1], range=0:1:360, startvalue=az)
@@ -180,11 +178,8 @@ function plot_vt_surfaces(; simfile="data/reachgrid.mat", cf=4.2, az=27, el=33.6
         rotate_cam!(ax1.scene, cam1, deg2rad(val), deg2rad(azimuth_slider.value[]), 0)
         rotate_cam!(ax1.scene, cam2, deg2rad(val), deg2rad(azimuth_slider.value[]), 0)
     end
-    
+    end
     return fig
-  else
-    error("Invalid plotstyle: $plotstyle")
-  end
 end
 
 function simple_grid_fillmissing(xs, ys, vals)
@@ -364,5 +359,110 @@ function simple_grid_fillmissing(xs, ys, vals)
   end
   
   return perfect_grid_xs, perfect_grid_ys, perfect_grid_vals
+end
+
+"""
+fit_powerlaws_to_oc(L_dist, V_ps, T_dur, timeValuation; verbose=0)
+
+Fits power law functions to velocity and duration data based on distance and time valuation.
+
+# Arguments
+- `L_dist`: Matrix of distances
+- `V_ps`: Matrix of peak speeds
+- `T_dur`: Matrix of durations
+- `timeValuation`: Matrix of time valuation costs
+- `verbose`: (Optional) Set to 1 to enable plotting and additional output
+- `M`: (Optional) Mass parameter for power law functions
+
+# Returns
+- `fn_vk`: Function for predicting velocity given time valuation and distance
+- `fn_tk`: Function for predicting duration given time valuation and distance
+- `k_v`: Parameter for velocity function
+- `k_t`: Parameter for duration function
+- `allfit`: Dictionary with statistics on fit quality
+"""
+function fit_powerlaws_to_oc(ms::main_sequence;M=1, verbose = 0)
+    # time valuation changes across dim 1.
+    # distance changes across dim 2.
+    # have two surfaces, ct vs dist -> spd, ct vs dist -> dur
+    # wanna replace two functions of V and T with k^1/4 * ct^1/4 * L^3/4 and k^1/4 * ct^-1/4 * L^1/4
+    L_dist          = ms.distance
+    T_dur           = ms.duration
+    V_ps            = ms.peak_speed
+    time_valuation  = ms.time_valuation
+
+    cts_x = time_valuation
+    col = findfirst(sum(cts_x .== 0, dims=1) .== 0) # don't use a sim row that has empty spots
+    col = col[2]
+    ct = cts_x[:, col]
+
+    # Call the fillmissingsurf function from the reach_et module
+    (cta, L_dist, T_dur)  = reach_et.simple_grid_fillmissing(time_valuation, L_dist, T_dur)
+    (_, _, V_ps)          = reach_et.simple_grid_fillmissing(time_valuation, L_dist, V_ps)
+
+    # Define power law functions
+    fn_v = (c_t, L) -> c_t.^(1/4) .* ((1/M)^(1/4)) .* L.^(3/4)
+    Av = fn_v(cta, L_dist)
+    bv = V_ps
+    
+    fn_t = (c_t, L) -> (1 ./ c_t).^(1/4) .* ((M)^(1/4)) .* L.^(1/4)
+    At = fn_t(cta, L_dist)
+    bt = T_dur
+    
+    #
+
+    # Solve for parameters using least squares
+    k_v = Av[:] \ bv[:]
+    k_t = At[:] \ bt[:]
+
+    # Create the scaled functions
+    fn_vk = (c_t, L) -> k_v * fn_v(c_t, L)
+    fn_tk = (c_t, L) -> k_t * fn_t(c_t, L)
+    
+    # Calculate predicted values
+    V_star = fn_vk(cta, L_dist)
+    T_star = fn_tk(cta, L_dist)
+
+    # Calculate fit statistics
+    ssr_v = sum((V_ps .- V_star).^2)      
+    sst_v = sum((V_ps .- mean(V_ps)).^2)
+    r2v = 1 - ssr_v/sst_v
+    
+    ssr_t = sum((T_dur .- T_star).^2)
+    sst_t = sum((T_dur .- mean(T_dur)).^2)
+    r2t = 1 - ssr_t/sst_t
+
+    RMSE_t = sqrt(mean((T_dur .- T_star).^2))
+    rmse_v = sqrt(mean((V_ps .- V_star).^2))
+    
+    # Compile all fit statistics into a dictionary
+    allfit = Dict(
+        "f_ctd2t" => fn_tk,
+        "f_ctd2v" => fn_vk,
+        "k_t" => k_t,
+        "k_v" => k_v,
+        "R2_t" => r2t,
+        "R2_v" => r2v,
+        "RMSE_t" => RMSE_t,
+        "rmse_v" => rmse_v,
+        "rmsep_t" => RMSE_t/mean(T_dur),
+        "rmsep_v" => rmse_v/mean(V_ps)
+    )
+
+    # Visualization section would go here if verbose=1
+    # I'm excluding it for now as it would require equivalent Julia plotting functions
+    
+    if verbose > 0
+        # This would be implemented using Plots.jl or GLMakie.jl
+        # Similar to the plot_vt_surfaces functions in the reach_et module
+        println("Verbose output enabled, but visualization is not implemented in this conversion.")
+        println("Fit statistics:")
+        println("R² for velocity: $(r2v)")
+        println("R² for duration: $(r2t)")
+        println("RMSE for velocity: $(rmse_v)")
+        println("RMSE for duration: $(RMSE_t)")
+    end
+
+    return fit_(fn_vk, fn_tk, k_v, k_t, allfit)
 end
 end
