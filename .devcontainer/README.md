@@ -33,7 +33,7 @@ pluto
 jlp
 
 # Run the main analysis
-julia --project=. -e "using PowerLawsEt; f, mainseq, fit = replicate_pub_whk_sim()"
+julia --project=. -e "using PowerLawsET; f, mainseq, fit = replicate_pub_whk_sim()"
 ```
 
 ## Development Workflow

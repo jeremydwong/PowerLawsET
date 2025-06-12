@@ -1,5 +1,5 @@
 {
-    "name": "PowerLawsEt Julia Development",
+    "name": "PowerLawsET Julia Development",
     "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
     
     "features": {
@@ -61,5 +61,5 @@
     },
 
     "remoteUser": "vscode",
-    "workspaceFolder": "/workspaces/PowerLawsEt"
+    "workspaceFolder": "/workspaces/PowerLawsET"
 }

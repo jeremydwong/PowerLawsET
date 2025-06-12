@@ -6,7 +6,7 @@ using InteractiveUtils
 
 # ╔═╡ a1b2c3d4-e5f6-7890-abcd-ef1234567890
 begin
-    using PowerLawsEt
+    using PowerLawsET
     using Revise
     using GLMakie
     using GLM 
@@ -15,7 +15,7 @@ begin
     using Pkg
     GLMakie.activate!(inline=true)
     # activate the package. We are in /src.
-    if !isdefined(Main, :PowerLawsEt)
+    if !isdefined(Main, :PowerLawsET)
         Pkg.activate(joinpath(@__DIR__, ".."))
         Pkg.instantiate()
     end

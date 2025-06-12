@@ -38,7 +38,7 @@ This repository includes devcontainer configuration for GitHub Codespaces:
 ### Running Core Functions
 ```julia
 # Basic usage pattern
-using PowerLawsEt
+using PowerLawsET
 f, mainseq, fit = replicate_pub_whk_sim("reachgrid_ctmech.mat")
 
 # Plot surfaces
@@ -51,7 +51,7 @@ fit = fit_powerlaws_to_oc(mainseq)
 ## Architecture
 
 ### Package Structure
-- **PowerLawsEt.jl**: Main module that exports core functions
+- **PowerLawsET.jl**: Main module that exports core functions
 - **reach_et.jl**: Contains the reach_et submodule with all implementation details
 
 ### Core Data Types

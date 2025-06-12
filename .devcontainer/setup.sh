@@ -2,7 +2,7 @@
 
 set -e
 
-echo "🚀 Setting up PowerLawsEt development environment..."
+echo "🚀 Setting up PowerLawsET development environment..."
 
 # Update package lists
 sudo apt-get update
@@ -53,7 +53,7 @@ julia --version
 
 # Set up Julia environment
 echo "🔧 Setting up Julia environment..."
-cd /workspaces/PowerLawsEt
+cd /workspaces/PowerLawsET
 
 # Activate project and install dependencies
 julia --project=. -e '
@@ -78,7 +78,7 @@ julia --project=. -e '
 # Set up git configuration for the container
 git config --global init.defaultBranch main
 git config --global pull.rebase false
-git config --global --add safe.directory /workspaces/PowerLawsEt
+git config --global --add safe.directory /workspaces/PowerLawsET
 
 # Create useful aliases
 cat >> ~/.bashrc << 'EOF'
@@ -95,14 +95,14 @@ alias gc='git commit'
 alias gp='git push'
 alias gl='git log --oneline'
 
-echo "🎯 PowerLawsEt development environment ready!"
+echo "🎯 PowerLawsET development environment ready!"
 echo "💡 Use 'pluto' to start Pluto server on port 1234"
 echo "💡 Use 'jlp' to start Julia with project environment"
 EOF
 
-echo "🎉 Setup complete! PowerLawsEt development environment is ready."
+echo "🎉 Setup complete! PowerLawsET development environment is ready."
 echo ""
 echo "Quick start commands:"
 echo "  pluto           - Start Pluto notebook server"
 echo "  jlp             - Start Julia with project environment"
-echo "  julia --project=. -e 'using PowerLawsEt; f, mainseq, fit = replicate_pub_whk_sim()'"
+echo "  julia --project=. -e 'using PowerLawsET; f, mainseq, fit = replicate_pub_whk_sim()'"
