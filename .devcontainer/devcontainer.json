@@ -1,0 +1,65 @@
+{
+    "name": "PowerLawsEt Julia Development",
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+    
+    "features": {
+        "ghcr.io/devcontainers/features/common-utils:2": {
+            "installZsh": true,
+            "configureZshAsDefaultShell": true,
+            "installOhMyZsh": true,
+            "upgradePackages": true,
+            "username": "vscode",
+            "userUid": "automatic",
+            "userGid": "automatic"
+        },
+        "ghcr.io/devcontainers/features/git:1": {
+            "ppa": true,
+            "version": "latest"
+        }
+    },
+
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "julialang.language-julia",
+                "ms-toolsai.jupyter",
+                "ms-python.python",
+                "GitHub.copilot",
+                "GitHub.copilot-chat"
+            ],
+            "settings": {
+                "julia.executablePath": "/usr/local/julia/bin/julia",
+                "julia.enableTelemetry": false,
+                "julia.symbolCacheDownload": true,
+                "julia.packageServer": "https://pkg.julialang.org",
+                "files.associations": {
+                    "*.jl": "julia"
+                },
+                "editor.tabSize": 4,
+                "editor.insertSpaces": true,
+                "editor.detectIndentation": false
+            }
+        }
+    },
+
+    "postCreateCommand": ".devcontainer/setup.sh",
+    
+    "forwardPorts": [1234, 8888, 9999],
+    "portsAttributes": {
+        "1234": {
+            "label": "Pluto Server",
+            "onAutoForward": "notify"
+        },
+        "8888": {
+            "label": "Jupyter Server", 
+            "onAutoForward": "notify"
+        },
+        "9999": {
+            "label": "GLMakie Server",
+            "onAutoForward": "notify"
+        }
+    },
+
+    "remoteUser": "vscode",
+    "workspaceFolder": "/workspaces/PowerLawsEt"
+}

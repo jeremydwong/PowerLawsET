@@ -3,6 +3,28 @@
 # Learn more about .gitignore:
 #     https://www.atlassian.com/git/tutorials/saving-changes/gitignore
 
+# Julia
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+deps/deps.jl
+docs/build/
+docs/site/
+
+# Julia package manager
+Manifest.toml
+
+# Pluto notebook state files
+.plutostate
+.pluto_workspace/
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
 # Node artifact files
 node_modules/
 dist/
@@ -47,4 +69,9 @@ Thumbs.db
 *.flv
 *.mov
 *.wmv
+
+# Temporary files
+*.tmp
+*.temp
+*~
 
