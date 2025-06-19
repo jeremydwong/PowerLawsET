@@ -1,4 +1,4 @@
-module PowerLawsEt
+module PowerLawsET
 using Statistics 
 
 include("reach_et.jl")

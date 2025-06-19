@@ -41,21 +41,56 @@ function replicate_whk()
   loads default data, plots surface, and returns main sequence object
 
 """
-function replicate_pub_whk_sim(;fname = "reachgrid_ctmech.mat")
-  # make simfile location relative to this file. 
-  base = dirname(dirname(@__FILE__))
-  # concatenate
-  simfile = joinpath(base, "data","reaching",fname)
-  data      = matread(simfile)
-  distance  = data["distance"]
-  duration  = data["duration"]
-  peak_speed = data["peak_speed"]
-  timeValuation = data["time_valuation"]
-  mainseq = main_sequence(distance=distance, duration=duration, peak_speed=peak_speed,time_valuation=timeValuation)
+function replicate_pub_whk_sim(;fname = "reachgrid_ctmech.mat",showplot=true)
+    """
+    replicate_pub_whk_sim(;fname = "reachgrid_ctmech.mat", showplot=true)
+    Replicates the WHK simulation for reaching movements.
+    Parameters
+    ----------
+    fname : str
+        Name of the MAT file containing the simulation results.
+        showplot : bool
+        Whether to display the plot of the surfaces.
+    Returns
+    -------
+    mainseq : main_sequence
+        The main sequence object containing distance, duration, peak speed, and time valuation.
+    ret_fit : fit_
+        The fitted power laws for velocity and time.
+    f : Figure
+        The generated figure object containing the surfaces.
 
-  f=plot_vt_surfaces(mainseq)
-  ret_fit = fit_powerlaws_to_oc(mainseq)
-  return (f, mainseq, ret_fit)
+    """
+
+  base = dirname(dirname(@__FILE__))
+  # concatenate the base path with the data directory and the filename
+  simfile       = joinpath(base, "data","reaching",fname)
+  data          = matread(simfile)
+  distance      = data["distance"]
+  duration      = data["duration"]
+  peak_speed    = data["peak_speed"]
+  time_valuation = data["time_valuation"]
+  
+
+  # Fill missing values in the grid
+  (time_valuation, distance, duration)  = simple_grid_fillmissing(time_valuation, distance, duration)
+  (_, _, peakspeed)         = simple_grid_fillmissing(time_valuation, distance, peak_speed)
+  
+  # Add zero columns
+  distance  = hcat(zeros(size(distance, 1)), distance)
+  duration  = hcat(zeros(size(distance, 1)), duration)
+  peakspeed = hcat(zeros(size(distance, 1)), peakspeed)
+  time_valuation = hcat(time_valuation[:, 1], time_valuation)
+
+  mainseq = main_sequence(distance=distance, duration=duration, peak_speed=peak_speed,time_valuation=time_valuation)
+
+  if showplot
+    f=plot_vt_surfaces(mainseq)
+  else
+    f = nothing
+  end
+    ret_fit = fit_powerlaws_to_oc(mainseq)
+  return (mainseq, ret_fit, f)
 end
 
 function plot_vt_surfaces(ms::main_sequence, az=27, el=33.6,plotstyle="interactive")
@@ -90,18 +125,6 @@ function plot_vt_surfaces(ms::main_sequence; simfile="data/reachgrid.mat", az=27
   # Colors in RGB format (0-1)
   # cs = range(RGB(239/255, 237/255, 245/255), RGB(117/255, 107/255, 177/255), length=100)
   
-  # Fill missing values in the grid
-  (ct, distance, duration)  = simple_grid_fillmissing(ms.time_valuation, ms.distance, ms.duration)
-  (_, _, peakspeed)         = simple_grid_fillmissing(ms.time_valuation, ms.distance, ms.peak_speed)
-  
-  # Add zero columns
-  distance  = hcat(zeros(size(distance, 1)), distance)
-  duration  = hcat(zeros(size(distance, 1)), duration)
-  peakspeed = hcat(zeros(size(distance, 1)), peakspeed)
-  ct = hcat(ct[:, 1], ct)
-  
-  ct_mech = ct
-
   # Plotting
       # Create a new figure
     fig = Figure(;size=(1000, 700), fontsize=16)
@@ -114,7 +137,7 @@ function plot_vt_surfaces(ms::main_sequence; simfile="data/reachgrid.mat", az=27
                title="Duration")
     
     # Create the surface
-    surf1 = GLMakie.surface!(ax1, ct_mech, distance, duration,
+    surf1 = GLMakie.surface!(ax1, time_valuation, distance, duration,
                colormap=:plasma,
                transparency=true,
                alpha=0.85,
@@ -136,7 +159,7 @@ function plot_vt_surfaces(ms::main_sequence; simfile="data/reachgrid.mat", az=27
                title="Peak Speed")
     
     # Create the surface
-    surf2 = GLMakie.surface!(ax2, ct_mech, distance, peakspeed,
+    surf2 = GLMakie.surface!(ax2, time_valuation, distance, peakspeed,
                colormap=:plasma,
                transparency=true,
                alpha=0.85,
@@ -386,6 +409,8 @@ function fit_powerlaws_to_oc(ms::main_sequence;M=1, verbose = 0)
     # distance changes across dim 2.
     # have two surfaces, ct vs dist -> spd, ct vs dist -> dur
     # wanna replace two functions of V and T with k^1/4 * ct^1/4 * L^3/4 and k^1/4 * ct^-1/4 * L^1/4
+    # returns: fn_vk, fn_tk, k_v, k_t, allfit
+    # allfit is a dictionary with R2, RMSE, 
     L_dist          = ms.distance
     T_dur           = ms.duration
     V_ps            = ms.peak_speed

@@ -1,34 +1,33 @@
 ### A Pluto.jl notebook ###
-# v0.19.46
+# v0.20.10
 
 using Markdown
 using InteractiveUtils
 
 # ╔═╡ a1b2c3d4-e5f6-7890-abcd-ef1234567890
 begin
-    using PowerLawsET
-    using Revise
-    using GLMakie
-    using GLM 
-    using DataFrames
-    using MAT
     using Pkg
-    GLMakie.activate!(inline=true)
-    # activate the package. We are in /src.
-    if !isdefined(Main, :PowerLawsET)
+	if !isdefined(Main, :PowerLawsET)
         Pkg.activate(joinpath(@__DIR__, ".."))
         Pkg.instantiate()
     end
-    Pkg.activate("..")
+	using GLMakie
+    using GLM 
+    using DataFrames
+    using MAT
+	using PlutoUI
+    # Configure WGLMakie for better Pluto performance
+    WGLMakie.activate!(inline=true, format="svg", px_per_unit=2)
+	using PowerLawsET
 end
 
-# ╔═╡ b2c3d4e5-f6g7-8901-bcde-f23456789012
+# ╔═╡ b2c3d4e5-f607-4901-bcde-f23456789012
 begin
-    f, mainseq, fit = replicate_pub_whk_sim("reachgrid_ctmech.mat")
+    f, mainseq, fit = replicate_pub_whk_sim(fname="reachgrid_ctmech.mat")
     f
 end
 
-# ╔═╡ c3d4e5f6-g7h8-9012-cdef-345678901234
+# ╔═╡ c3d4e5f6-a708-9012-cdef-345678901234
 function overlay_subject_data(fig, mainseq::main_sequence; mrkr=:circle, color=:red, size=10)
     """
     Overlays subject data points on the existing surface plots.
@@ -85,14 +84,14 @@ function overlay_subject_data(fig, mainseq::main_sequence; mrkr=:circle, color=:
     return fig
 end
 
-# ╔═╡ d4e5f6g7-h8i9-0123-defg-456789012345
+# ╔═╡ d4e5f6a7-b8c9-0123-defa-456789012345
 md"""
-### Subject PowerLaw fit 
-fn_v = fit.
+### Function: PowerLaw fit to subject data.
+
 """
 
-# ╔═╡ e5f6g7h8-i9j0-1234-efgh-567890123456
-function fit_ct_2vandt(k_v,k_t,ms::main_sequence;norm_v=1.0,norm_t=1.0,only_v1_t2=0,M=1)
+# ╔═╡ e5f6a7b8-c9d0-1234-efab-567890123456
+function fit_ct_for_vt(k_v,k_t,ms::main_sequence;norm_v=1.0,norm_t=1.0,only_v1_t2=0,M=1)
   """
   Fit the main sequence data (V, T) simultaneously via the two powerlaws for V and T, each of which depend on Ct and D. 
   #Arguments:
@@ -155,8 +154,7 @@ function fit_ct_2vandt(k_v,k_t,ms::main_sequence;norm_v=1.0,norm_t=1.0,only_v1_t
   print("b: ")
   println(b)
 
-  # use GLM.jl for linear modeling instead of MATLAB's fitlm
-  # Fit linear model without intercept (the -1 in MATLAB notation)
+  # Use GLM.jl for linear modeling 
   # In Julia GLM, this is done with the @formula syntax
   
   model = lm(@formula(b ~ A - 1), df)
@@ -178,12 +176,20 @@ function fit_ct_2vandt(k_v,k_t,ms::main_sequence;norm_v=1.0,norm_t=1.0,only_v1_t
   return (ms_star, r2_val)
 end
 
-# ╔═╡ f6g7h8i9-j0k1-2345-fghi-678901234567
+# ╔═╡ 6530ee37-78c7-45cc-8fb5-80237728ea4b
+md"""
+## Step 2: fit experiment condition data
+Everyday, Fast, Slow and Preferred movements from each subject get fit with a condition-specific $c_t$.  
+"""
+
+# ╔═╡ f6a7b8c9-d0e1-2345-fabc-678901234567
 begin
     k_v = fit.k_v
     k_t = fit.k_t
-    # loop from subject # 1 to 9, fit_ct_2vandt
-    # pre-allocate main_sequence vector of length 9 
+    
+	# loop from subject # 1 to 9, fit_ct_for_vt for each
+    
+	# pre-allocate main_sequence vector of length 9 
     main_seq_star_vec = Vector{main_sequence}(undef, 9)
     main_seq_vec = Vector{main_sequence}(undef, 9)
     R2_vec = zeros(9)
@@ -194,37 +200,66 @@ begin
         fname = "ms_"*conditions[1]*"_subject_"*string(i)*".mat"
         dir   = dirname(dirname(@__FILE__))
         fpath = joinpath(dir,"data","reaching","subjects",fname)
-        data = matread(fpath)
-        ms = main_sequence(peak_speed = data["peak_speed"], duration = data["duration"], distance = data["distance"],time_valuation = 0.0)
-        main_seq_vec[i] = ms
-        ms_fit = fit_ct_2vandt(k_v,k_t,ms,norm_v=.5,norm_t=1.0,only_v1_t2=0)
+        data  = matread(fpath)
+        ms    = main_sequence(peak_speed = data["peak_speed"], duration = data["duration"], distance = data["distance"],time_valuation = 0.0)
+        
+        ms_fit = fit_ct_for_vt(k_v,k_t,ms,norm_v=.5,norm_t=1.0,only_v1_t2=0)
         main_seq_star_vec[i] = ms_fit[1]
+
+		#add the estimated time_valuation to the main_sequence
+		main_seq_vec[i]     = main_sequence(peak_speed = data["peak_speed"], duration = data["duration"], distance = data["distance"], time_valuation = ms_fit[1].time_valuation)
+		
         R2_vec[i] = ms_fit[2]
-    end
+    end;
+	
 end
 
-# ╔═╡ g7h8i9j0-k1l2-3456-ghij-789012345678
+# ╔═╡ a7b8c9d0-e1f2-3456-abcd-789012345678
+md"""
+## Subject Data Overlay - All Subjects
+Shows experimental data (red crosses) and model fits (green circles) for all 9 subjects overlaid on the power law surfaces.
+"""
+
+# ╔═╡ f2a3b4c5-d6e7-8901-bcde-234567890123
 begin
-    # loop across the two ms vectors and plot the human data and model fits
+    # Create a copy of the base figure and overlay ALL subject data
+    fig_all = f
+    
+    # Loop through all subjects and overlay their data
     for i in 1:9
-        fig = overlay_subject_data(f, main_seq_star_vec[i], mrkr=:circle, color=:green, size=10)
-        display(f)
+        # Overlay model predictions (green circles) 
+        overlay_subject_data(fig_all, main_seq_star_vec[i], mrkr=:circle, color=:green, size=8)
+        # Overlay actual data (red crosses)
+        overlay_subject_data(fig_all, main_seq_vec[i], mrkr=:xcross, color=:red, size=6)
     end
+    
+    println("Overlaid data for all 9 subjects:")
+    for i in 1:9
+        println("Subject $i: R² = $(round(R2_vec[i], digits=3))")
+    end
+    
+    fig_all
 end
 
-# ╔═╡ h8i9j0k1-l2m3-4567-hijk-890123456789
+# ╔═╡ b8c9d0e1-f2a3-4567-bcde-890123456789
 fit.allfit
 
-# ╔═╡ i9j0k1l2-m3n4-5678-ijkl-901234567890
+# ╔═╡ c9d0e1f2-a3b4-5678-cdef-901234567890
 fit.k_t
+
+# ╔═╡ 3d90dfdc-32ba-41c7-aea2-061e97490785
+main_seq_vec[1][1:5]
 
 # ╔═╡ Cell order:
 # ╠═a1b2c3d4-e5f6-7890-abcd-ef1234567890
-# ╠═b2c3d4e5-f6g7-8901-bcde-f23456789012
-# ╠═c3d4e5f6-g7h8-9012-cdef-345678901234
-# ╟─d4e5f6g7-h8i9-0123-defg-456789012345
-# ╠═e5f6g7h8-i9j0-1234-efgh-567890123456
-# ╠═f6g7h8i9-j0k1-2345-fghi-678901234567
-# ╠═g7h8i9j0-k1l2-3456-ghij-789012345678
-# ╠═h8i9j0k1-l2m3-4567-hijk-890123456789
-# ╠═i9j0k1l2-m3n4-5678-ijkl-901234567890
+# ╠═b2c3d4e5-f607-4901-bcde-f23456789012
+# ╠═c3d4e5f6-a708-9012-cdef-345678901234
+# ╟─d4e5f6a7-b8c9-0123-defa-456789012345
+# ╠═e5f6a7b8-c9d0-1234-efab-567890123456
+# ╟─6530ee37-78c7-45cc-8fb5-80237728ea4b
+# ╠═f6a7b8c9-d0e1-2345-fabc-678901234567
+# ╟─a7b8c9d0-e1f2-3456-abcd-789012345678
+# ╠═f2a3b4c5-d6e7-8901-bcde-234567890123
+# ╠═b8c9d0e1-f2a3-4567-bcde-890123456789
+# ╠═c9d0e1f2-a3b4-5678-cdef-901234567890
+# ╠═3d90dfdc-32ba-41c7-aea2-061e97490785
